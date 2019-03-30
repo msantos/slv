@@ -1,0 +1,727 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>slv</title>
+    <script type="text/javascript" src="js/hammer.min.js"></script>
+    <script type="text/javascript" src="js/hammer-time.min.js"></script>
+    <script type="text/javascript" src="js/moment.min.js"></script>
+    <script>
+      var ws;
+      var state = {
+        "today": -1,
+        "localtime": true,
+        "file": "stderr.log",
+        "curfile": "stderr.log",
+        "count": 0,
+        "scale": 1,
+        "tab": "tab_log",
+
+        "re": false,
+        "context": false,
+        "offset": false,
+        "lineno": false,
+      };
+
+      var config = {
+        "service": function() {
+          return document.querySelector('input[name="archive"]:checked').value;
+        },
+        "direction": function() {
+          return document.querySelector('input[name="direction"]:checked').value;
+        },
+        "re": function() {
+          return document.getElementById("re").value;
+        },
+        "context": function() {
+          return document.getElementById("context").value;
+        },
+        "count": function() {
+          return document.querySelector('input[name="count"]:checked').value;
+        },
+        "offset": function() {
+          return document.getElementById("offset").value;
+        },
+      };
+
+      function filename(name, d) {
+        return state.file + moment(d).format(".YYYY-MM-DD");
+      }
+
+      function next_archive() {
+        let archive = document.getElementsByName("archive");
+        let checked = 0;
+
+        for (i = 0; i < archive.length; i++) {
+          if (archive[i].checked) {
+            checked = i;
+            break;
+          }
+        }
+
+        return archive[(checked + 1) % archive.length].value;
+      }
+
+      function yesterday() {
+        state.today += 1;
+        state.curfile = filename(
+          state.file,
+          moment().subtract(state.today, "days")
+          );
+        return state.curfile;
+      }
+
+      function tomorrow() {
+        state.today -= 1;
+
+        switch (state.today) {
+          case -2:
+            let archive = next_archive();
+            document.getElementById(archive).checked = true;
+            state.today = -1;
+            state.curfile = state.file;
+            break;
+
+          case -1:
+            state.curfile = state.file;
+            break;
+
+          default:
+            state.curfile = filename(
+              state.file,
+              moment().subtract(state.today, "days")
+              );
+            break;
+        }
+
+        return state.curfile;
+      }
+
+      function settitle(title) {
+        document.title = title;
+        stderr(config.service() + "/" + state.curfile);
+      }
+
+      function open(name) {
+        clear();
+        console.log(name);
+        settitle(name);
+        state.count = 0;
+        xsend([
+            ["service", config.service()],
+            ["open", name],
+            ["re", config.re()],
+            ["offset", config.offset()],
+            ["next", lines()]
+        ]);
+      }
+
+      function stderr(msg) {
+        message.textContent = msg;
+      }
+
+      function localtime(d) {
+        switch (state.localtime) {
+          case true:
+            return moment(d).format();
+          case false:
+            return d;
+        }
+      }
+
+      function lineno() {
+        return state.lineno
+          ? '<font color="red">' + (state.count++) + '</font>'
+          : "";
+      }
+
+      function format(msg) {
+        try {
+          var e = JSON.parse(msg);
+          return lineno()
+            + ' <font color="yellow">' + localtime(e.time) + '</font>'
+            + ' <font color="green">' + e.host + '</font>'
+            + ' <font color="silver">' + e.type + '</font>'
+            + ' <font color="white">' + e.description + '</font>';
+        } catch (error) {
+          console.log(error);
+          console.log(msg);
+          return msg;
+        }
+      }
+
+      function syslog(msg) {
+        var log = document.getElementById("log");
+        var entry = document.createElement("div");
+        entry.innerHTML = format(msg);
+        switch (config.direction()) {
+          case "tail":
+            log.insertBefore(entry, log.firstChild);
+            break;
+
+          case "head":
+            log.insertBefore(entry, undefined);
+            break;
+        }
+        scroll_to_top();
+      }
+
+      function send(arg0, arg1) {
+        console.log([arg0, arg1]);
+        if (ws.readyState == ws.OPEN) {
+          ws.send(arg0 + " " + arg1);
+        }
+      }
+
+      function xsend(arg) {
+        console.log(arg);
+
+        switch (ws.readyState) {
+          case ws.OPEN:
+            arg.forEach(function ([arg0, arg1]) {
+              send(arg0, arg1);
+            });
+            break;
+
+          case ws.CLOSED:
+            connect(function() {
+              arg.forEach(function ([arg0, arg1]) {
+                send(arg0, arg1);
+              });
+            });
+            break;
+
+          default:
+            break;
+        }
+      }
+
+      function clear() {
+        document.getElementById("log").innerHTML = "";
+      }
+
+      function scroll_to_top() {
+        var pager = document.getElementById("pager");
+        var rect = pager.getBoundingClientRect();
+
+        switch (config.direction()) {
+          case "tail":
+            window.scrollBy(0, rect.top)
+            break;
+
+          case "head":
+            window.scrollBy(0, rect.bottom)
+            break;
+        }
+      }
+
+      function scroll_by_page(direction) {
+        var pager = document.getElementById("pager");
+        var n = window.innerHeight;
+        switch (direction) {
+          case "tail":
+            break;
+
+          case "head":
+            n *= -1;
+            break;
+        }
+        window.scrollBy(0, n);
+      }
+
+      function scroll(s) {
+        switch (config.direction()) {
+          case "tail":
+            if (s.tail)
+              s.tail();
+            break;
+
+          case "head":
+            if (s.head)
+              s.head();
+            break;
+        }
+      }
+
+      function dir(d) {
+        clear();
+        state.count = 0;
+        xsend([
+            ["dir", d],
+            ["next", lines()]
+        ]);
+      }
+
+      function set_direction(f) {
+        console.log(f.value);
+        dir(f.value);
+      }
+
+      function service(s) {
+        open(state.curfile);
+      }
+
+      function lines() {
+        return Math.floor(window.innerHeight / (50 * state.scale));
+      }
+
+      function dirty(setting, opt) {
+        var t = (!opt || opt.type == undefined) ? "any" : opt.type;
+
+        switch (t) {
+          case "any":
+            break;
+
+          case "non_neg_integer":
+            var id = document.getElementById(setting);
+            var v = id.value;
+            id["style"]["background-color"] = 'lightgreen';
+            if (!/^[0-9]+$/.test(v)) {
+              id["style"]["background-color"] = 'lightcoral';
+            }
+            break;
+        }
+        state[setting] = (!opt || opt.bool == undefined) ? true : opt.bool;
+      }
+
+      function set_settings() {
+        if (state.offset) {
+          clear();
+          state.offset = false;
+
+          xsend([
+              ["offset", config.offset()],
+              ["next", lines()]
+          ]);
+        }
+
+        if (state.context) {
+          state.context = false;
+          xsend([
+              ["context", config.context()]
+          ]);
+        }
+
+        if (state.re) {
+          clear();
+          state.re = false;
+          xsend([
+              ["re", config.re()],
+              ["next", lines()]
+          ]);
+        }
+      }
+
+      function wsuri() {
+        var hostname = window.location.hostname ? window.location.hostname : "localhost";
+        var port = window.location.port;
+        var protocol = window.location.protocol;
+        var path = window.location.protocol;
+        var pws = "ws:";
+
+        if (protocol == "https:")
+          pws = "wss:";
+
+        if (port) port = ":" + port;
+
+        return pws + "//" + hostname + port + window.location.pathname;
+      }
+
+      function connect(fun) {
+        var uri = wsuri();
+
+        console.log("connecting: " + uri);
+
+        if (ws) ws.close();
+
+        ws = new WebSocket(uri);
+
+        ws.onopen = function() {
+          fun();
+        };
+        ws.onclose = function() {
+          stderr(config.service() + "/" + state.curfile + ': EOF');
+        };
+        ws.onmessage = function(event) {
+          syslog(event.data);
+        };
+      }
+
+      function loguri() {
+        var protocol = window.location.protocol;
+        var hostname = window.location.hostname ? window.location.hostname : "localhost";
+        var port = window.location.port ? window.location.port : "8080";
+
+        var uri = protocol + "//" + hostname + ":" + port + "/log/" +
+              config.service() + "/" + state.curfile;
+
+        console.log(uri);
+
+        document.getElementById('download').action = uri;
+        document.getElementById('download').method = "get";
+      }
+
+      function open_config(evt, name) {
+        var i, tabcontent, tablinks;
+
+        state.tab = name;
+
+        tabcontent = document.getElementsByClassName("tabcontent");
+        for (i = 0; i < tabcontent.length; i++) {
+          tabcontent[i].style.display = "none";
+        }
+
+        tablinks = document.getElementsByClassName("tablinks");
+        for (i = 0; i < tablinks.length; i++) {
+          tablinks[i].className = tablinks[i].className.replace(" active", "");
+        }
+
+        document.getElementById(name).style.display = "block";
+        evt.currentTarget.className += " active";
+      }
+
+      function set_from_query_string(query) {
+        if (!query) return;
+
+        var p = query.split('&');
+
+        p.forEach(function (s) {
+          var [k, v] = s.split('=', 2);
+          switch (k) {
+            case "service":
+              document.getElementById(v).checked = true;
+              break;
+            case "open":
+              state.curfile = v;
+              break;
+            case "dir":
+              document.getElementById(v).checked = true;
+              break;
+            case "re":
+              document.getElementById("re").value = v;
+              break;
+          }
+        });
+      }
+
+      function fontsize() {
+        var log = document.getElementById('log');
+        state.scale = state.scale == 1 ? 2 : 1;
+
+        switch (state.scale) {
+          case 1:
+          log.style.fontSize = '1.5vw';
+          break;
+
+          case 2:
+          log.style.fontSize = '3vw';
+          break;
+        }
+      }
+
+      function main() {
+        var pager = document.getElementById("pager");
+        var log = document.getElementById("log");
+        var message = document.getElementById("message");
+        var span = document.getElementsByClassName("close")[0];
+        var settings = document.getElementById('settings');
+
+        delete Hammer.defaults.cssProps.userSelect;
+        var ctl = new Hammer(pager);
+        ctl.get('swipe').set({ direction: Hammer.DIRECTION_ALL });
+        ctl.get('press').set({ time: 600 });
+
+        var status = new Hammer(message);
+        status.get('press').set({ time: 600 });
+
+        message.style.display = "inline-block";
+        settitle(state.file);
+
+        var query = decodeURI(location.href.split('?')[1]);
+
+        set_from_query_string(query);
+
+        connect(function() {
+          open(state.curfile);
+        });
+
+        document.onkeypress = function (e) {
+          e = e || window.event;
+
+          switch (e.keyCode) {
+            case 103: // g
+            dir("head");
+            break;
+
+            case 71: // G
+            dir("tail");
+            break;
+          };
+        };
+
+        document.onkeydown = function (e) {
+          e = e || window.event;
+
+          console.log(e.keyCode);
+          switch (e.keyCode) {
+            case 27: // esc
+            switch (settings.style.display) {
+              case "block":
+                settings.style.display = "none";
+                set_settings();
+                break;
+
+              case "none":
+              case "":
+                document.getElementById(state.tab).click();
+                settings.style.display = "block";
+                break;
+            }
+            break;
+
+            case 33: // page up
+            scroll({"tail": function() {
+                   if (window.scrollY == 0) {
+                     send("next", lines());
+                   }
+                   else {
+                     scroll_by_page("head");
+                   }
+                },
+                "head": function() {
+                   scroll_by_page("head")
+                }});
+            break;
+
+            case 32: // space
+            case 34: // page down
+            scroll({"tail": function() { scroll_by_page("tail"); },
+                "head": function() {
+                   if (window.innerHeight + window.scrollY == document.body.scrollHeight) {
+                     send("next", lines());
+                   }
+                   else {
+                     scroll_by_page("tail");
+                   }}});
+            break;
+
+            case 37: // <-
+            open(yesterday());
+            break;
+
+            case 38: // up arrow
+            scroll({"tail": function() {
+                   if (window.scrollY == 0) {
+                     send("next", 1);
+                   }
+                   else {
+                     scroll_by_page("head");
+                   }
+                },
+                "head": function() {
+                   scroll_by_page("head")
+                }});
+            break;
+
+            case 39: // ->
+            open(tomorrow());
+            break;
+
+            case 40: // down arrow
+            scroll({"tail": function() { scroll_by_page("tail"); },
+                "head": function() {
+                   if (window.innerHeight + window.scrollY == document.body.scrollHeight) {
+                     send("next", 1);
+                   }
+                   else {
+                     scroll_by_page("tail");
+                   }}});
+            break;
+
+            case 67: // c
+            state.lineno = !state.lineno;
+            break;
+
+            case 68: // d
+            clear();
+            break;
+
+            case 72: // h
+            open(yesterday());
+            break;
+
+            case 74: // j
+            scroll({"tail": function() { scroll_by_page("tail"); },
+                "head": function() {
+                   if (window.innerHeight + window.scrollY == document.body.scrollHeight) {
+                     send("next", 1);
+                   }
+                   else {
+                     scroll_by_page("tail");
+                   }}});
+            break;
+
+            case 75: // k
+            scroll({"tail": function() {
+                   if (window.scrollY == 0) {
+                     send("next", 1);
+                   }
+                   else {
+                     scroll_by_page("head");
+                   }
+                },
+                "head": function() {
+                   scroll_by_page("head")
+                }});
+            break;
+
+            case 76: // l
+            open(tomorrow());
+            break;
+          };
+        };
+
+        ctl.on("swipeleft", function(ev) {
+          open(tomorrow());
+        });
+
+        ctl.on("swiperight", function(ev) {
+          open(yesterday());
+        });
+
+        ctl.on("swipedown", function(ev) {
+          scroll({"tail": function() {
+                 if (window.scrollY == 0) {
+                   send("next", lines());
+                 }
+                 else {
+                   scroll_by_page("head");
+                 }
+              },
+              "head": function() {
+                 scroll_by_page("head")
+              }});
+        });
+
+        ctl.on("swipeup", function(ev) {
+          scroll({"tail": function() { scroll_by_page("tail"); },
+              "head": function() {
+                 if (window.innerHeight + window.scrollY == document.body.scrollHeight) {
+                   send("next", lines());
+                 }
+                 else {
+                   scroll_by_page("tail");
+                 }}});
+        });
+
+        ctl.on("doubletap", function(ev) { fontsize() });
+        status.on("doubletap", function(ev) { fontsize() });
+
+        ctl.on("press", function(ev) {
+          document.getElementById(state.tab).click();
+          settings.style.display = "block";
+        });
+
+        status.on("press", function(ev) {
+          document.getElementById(state.tab).click();
+          settings.style.display = "block";
+        });
+
+        span.onclick = function() {
+          settings.style.display = "none";
+          set_settings();
+        }
+
+        window.onclick = function(event) {
+          if (event.target == settings) {
+            settings.style.display = "none";
+            set_settings();
+          }
+        }
+    }
+    </script>
+    <link rel="stylesheet" href="css/slv.css">
+    <meta name="viewport" content="user-scalable=no, width=device-width, initial-scale=1, maximum-scale=1">
+  </head>
+  <body onload="main()" id="pager" style="overflow-y: hidden">
+  <div id="viewer" height="100%" width="100%">
+    <div id="settings" class="config">
+    <span class="close">&times;</span>
+    <div class="config-content">
+      <div class="tab">
+        <button class="tablinks" onfocus="open_config(event, 'config_log')" onclick="open_config(event, 'config_log')" id="tab_log">log</button>
+        <button class="tablinks" onfocus="open_config(event, 'config_grep')" onclick="open_config(event, 'config_grep')" id="tab_grep">grep</button>
+        <button class="tablinks" onfocus="open_config(event, 'config_advanced')" onclick="open_config(event, 'config_advanced')" id="tab_advanced">advanced</button>
+        <button class="tablinks" onfocus="open_config(event, 'config_download')" onclick="open_config(event, 'config_download')" id="tab_download">download</button>
+      </div>
+
+      <div id="config_log" class="tabcontent">
+        <form>
+          <div>
+          <input type="radio" name="archive" id="network" value="network" onclick="service(this)" checked>
+          <label for="network">Network</label>
+
+          <input type="radio" name="archive" id="cde" value="cde" onclick="service(this)">
+          <label for="cde">CDE</label>
+
+          <input type="radio" name="archive" id="prd" value="prd" onclick="service(this)">
+          <label for="prd">PRD</label>
+          </div>
+        </form>
+        <form>
+          <div>
+          <input type="radio" name="direction" id="tail" value="tail" onclick="set_direction(this)" checked>
+          <label for="tail">tail</label>
+
+          <input type="radio" name="direction" id="head" value="head" onclick="set_direction(this)">
+          <label for="head">head</label>
+          </div>
+        </form>
+      </div>
+
+      <div id="config_grep" class="tabcontent">
+        <form onsubmit="return false;">
+          <div>
+            <input type="text" id="re" value="" onkeydown='dirty("re");'>
+            <label for="context">filter using expression</label>
+          </div>
+        </form>
+        <form onsubmit="return false;">
+          <div>
+            <input type="text" id="context" value="0" onkeyup='dirty("context", {"type": "non_neg_integer"});'>
+            <label for="context">match context: number of lines to display before match</label>
+          </div>
+        </form>
+      </div>
+
+      <div id="config_advanced" class="tabcontent">
+        <form>
+          <div>
+          <input type="radio" name="count" id="count_true" value="true" onclick='dirty("lineno", {"bool": true})' >
+          <label for="count_true">enable line numbers</label>
+
+          <input type="radio" name="count" id="count_false" value="false" onclick='dirty("lineno", {"bool": false})' checked>
+          <label for="count_false">disable line numbers</label>
+          </div>
+        </form>
+        <form onsubmit="return false;">
+          <div>
+            <input type="text" id="offset" value="0" onkeyup='dirty("offset", {"type": "non_neg_integer"});'>
+            <label for="offset">offset: move to line in file</label>
+          </div>
+        </form>
+      </div>
+
+      <div id="config_download" class="tabcontent">
+        <form id="download" onSubmit="return loguri();">
+          <button type="submit">Download</button>
+        </form>
+      </div>
+
+    </div>
+    </div>
+    <div id="log"></div>
+    <div id="message" class="message"></div>
+  </div>
+  </body>
+</html>

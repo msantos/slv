@@ -1,0 +1,196 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+export SLV_LOGDIR=${SLV_LOGDIR-"log"}
+export SLV_FILE=${SLV_FILE-"stderr.log"}
+export SLV_SERVICE=${SLV_SERVICE-"system"}
+export SLV_LINE=${SLV_LINE-0}
+export SLV_DIR=${SLV_DIR-"tail"}
+export SLV_RE=${SLV_RE-'.*'}
+export SLV_CONTEXT=${SLV_CONTEXT-0}
+
+export SLV_TMPDIR="${SLV_TMPDIR-$(mktemp --directory --suffix=-slv)}"
+SLV_TMP="$SLV_TMPDIR/context"
+
+trap atexit EXIT
+atexit() {
+  rm -rf "$SLV_TMPDIR"
+}
+
+min() {
+  local a=$1
+  local b=$2
+  echo "$((a < b ? a : b))"
+}
+
+_urlencode() {
+  local string="${1}"
+  local strlen=${#string}
+  local encoded=""
+
+  for (( pos=0 ; pos<strlen ; pos++ )); do
+   c=${string:$pos:1}
+   case "$c" in
+    [-_.~a-zA-Z0-9] ) o="${c}" ;;
+    * )               printf -v o '%%%02x' "'$c"
+   esac
+   encoded+="${o}"
+  done
+  echo "${encoded}"
+}
+
+_cat() {
+  if [ -s "$1" ]; then
+  case "$SLV_DIR" in
+    head) exec cat "$1" ;;
+    tail) exec tac "$1" ;;
+  esac
+  elif [ -f "$1" ]; then
+  cat << EOF
+| The selected log file is empty.
+|
+| Try an older log file. The log may have been rotated.
+EOF
+  else
+  cat << EOF
+| The selected log file does not exist.
+|
+| Try an older log file. The log may have not have been rotated today.
+EOF
+  fi
+}
+
+export -f _cat
+
+LOG="$SLV_LOGDIR/$(_urlencode "$SLV_SERVICE")/$(_urlencode "$SLV_FILE")"
+
+X=0
+OFFSET="$SLV_LINE"
+OFFSET0=0
+>"$SLV_TMP"
+
+while read -u 9 -r l; do
+  if [ "$OFFSET" -gt "0" ]; then
+    OFFSET=$((OFFSET - 1))
+    continue
+  fi
+
+  if [ "$X" -eq "0" ]; then
+
+    while :; do
+      read -n 128 -r arg0 arg1
+      case "$arg0" in
+        context)
+          case "$arg1" in
+            [1-9]) ;&
+            [1-9][0-9]) ;&
+            [1-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9])
+              SLV_CONTEXT="$arg1"
+              >"$SLV_TMP"
+              OFFSET0="$SLV_LINE"
+              ;;
+            *) exit 4 ;;
+          esac
+          ;;
+        dir)
+          case "$arg1" in
+            tail)
+              if [ "$SLV_DIR" == "head" ]; then
+                exec /usr/bin/env SLV_DIR="tail" SLV_LINE=0 "$0"
+              fi
+              ;;
+            head)
+              if [ "$SLV_DIR" == "tail" ]; then
+                exec /usr/bin/env SLV_DIR="head" SLV_LINE=0 "$0"
+              fi
+              ;;
+            *) exit 4 ;;
+          esac
+          ;;
+        next)
+          case "$arg1" in
+            -1) ;&        # dump file
+            [1-9]) ;&
+            [1-9][0-9]) ;&
+            [1-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9][0-9][0-9][0-9])
+              X="$arg1"
+              break
+              ;;
+            *) exit 4 ;;
+          esac
+          ;;
+
+        open)
+          if [[ ! $arg1 =~ ^[a-zA-Z0-9.-]+$ ]]; then
+            exit 4
+          fi
+
+          exec /usr/bin/env SLV_LINE=0 SLV_FILE="$arg1" "$0"
+          ;;
+
+        service)
+          if [[ ! $arg1 =~ ^[a-zA-Z0-9]+$ ]]; then
+            exit 4
+          fi
+
+          exec /usr/bin/env SLV_LINE=0 SLV_SERVICE="$arg1" SLV_FILE="stderr.log" "$0"
+          ;;
+
+        offset)
+          case "$arg1" in
+            [0-9]) ;&
+            [1-9][0-9]) ;&
+            [1-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9][0-9][0-9]) ;&
+            [1-9][0-9][0-9][0-9][0-9][0-9][0-9])
+              exec /usr/bin/env SLV_LINE="$arg1" "$0"
+              ;;
+            *) exit 4 ;;
+          esac
+          ;;
+        re)
+          # shellcheck disable=SC1001
+          if [[ ! $arg1 =~ ^[a-zA-Z0-9\^\$\.\*\+\\_\-]*$ ]]; then
+            exit 4
+          fi
+
+          case "$arg1" in
+            "") SLV_RE='.*' ;;
+            *) SLV_RE="$arg1" ;;
+          esac
+          ;;
+        *)
+          exit 3
+          ;;
+      esac
+    done
+  fi
+  SLV_LINE=$((SLV_LINE+1))
+  if [[ ! $l =~ $SLV_RE ]]; then
+    if [ "$SLV_CONTEXT" -gt "0" ]; then
+      echo "$l" >> "$SLV_TMP"
+    fi
+    continue
+  fi
+  if [ "$SLV_CONTEXT" -gt "0" ]; then
+    OFF="$((SLV_LINE - OFFSET0))"
+    N="$(min "$OFF" "$SLV_CONTEXT")"
+    if [ "$N" -gt "0" ]; then
+      tail -"${N}" "$SLV_TMP"
+    fi
+    >"$SLV_TMP"
+    OFFSET0="$SLV_LINE"
+  fi
+  echo "$l"
+  X=$((X-1))
+done 9< <(_cat "$LOG")
