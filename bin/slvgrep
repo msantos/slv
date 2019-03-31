@@ -1,0 +1,109 @@
+#!/bin/bash
+
+set -o errexit
+set -o nounset
+set -o pipefail
+
+SLV_SERVER=${SLV_SERVER-localhost:8080}
+
+SLV_VERBOSE=${SLV_VERBOSE-""}
+
+SLV_DATE=${SLV_DATE-""}
+SLV_MODE=${SLV_MODE-"tail"}
+SLV_OFFSET=${SLV_OFFSET-0}
+SLV_OPEN=${SLV_OPEN-"stderr.log"}
+SLV_RE=${SLV_RE-".*"}
+
+SLV_EOF=1
+SLV_EXIT="quit"
+
+SLV_NEXT=${SLV_NEXT--1}
+
+SLV_FORMAT='"\(.time) \(.host) \(.service) \(.description)"'
+
+_cat() {
+  case "$SLV_MODE" in
+    head) cat ;;
+    tail)
+      if [ "$SLV_EOF" -eq "0" ]; then
+        cat
+      else
+        tac
+      fi
+      ;;
+  esac
+}
+
+usage() {
+cat << EOF
+slvgrep [<option>] /<service> [<pattern>]
+
+  -C                use command mode
+  -D <date>         search logs from date (default: today)
+  -d                enable debugging
+  -m head|tail      return newest (tail) or oldest (head) results first (default: $SLV_MODE)
+  -n <count>        number of lines to return (default: $SLV_NEXT)
+  -O <offset>       move to file offset (default: $SLV_OFFSET)
+  -r <format>       JSON log format (default: $SLV_FORMAT)
+  -S <address:port> archive server address (default: $SLV_SERVER)
+  -v                enable verbose mode
+
+EOF
+
+exit 1
+}
+
+while getopts "CD:dEhm:n:O:r:S:v" opt; do
+    case $opt in
+        C) SLV_EOF=0 ;; # command mode
+        d) set -x ;;
+        D) SLV_DATE=$(date --date="${OPTARG}" +'%Y-%m-%d') ;;
+        m) case $OPTARG in
+            head) ;;
+            tail) ;;
+            *) usage ;;
+           esac
+           SLV_MODE=$OPTARG ;;
+        n) SLV_NEXT=$OPTARG ;;
+        O) SLV_OFFSET=$OPTARG ;;
+        r) SLV_FORMAT=$OPTARG ;;
+        S) SLV_SERVER=$OPTARG ;;
+        v) SLV_VERBOSE="-v" ;;
+        h) ;&
+        *) usage ;;
+    esac
+done
+
+shift $((OPTIND-1))
+
+case "$#" in
+  1) SLV_SERVICE=$1 ;;
+
+  2) SLV_SERVICE=$1
+     SLV_RE=$2
+     ;;
+
+  *) usage ;;
+esac
+
+SLV_SERVICE="${SLV_SERVICE#/}"
+SLV_SERVICE="${SLV_SERVICE%/}"
+
+if [ "$SLV_DATE" ]; then
+	SLV_OPEN="${SLV_OPEN}.${SLV_DATE}"
+fi
+
+if [ -t 1 ] && [ $SLV_EOF -eq "0" ]; then
+  SLV_EXIT=""
+fi
+
+wsta ${SLV_VERBOSE} "ws://${SLV_SERVER}/archive/" \
+  "service ${SLV_SERVICE}" \
+  "open ${SLV_OPEN}" \
+  "dir ${SLV_MODE}" \
+  "re ${SLV_RE}" \
+  "offset ${SLV_OFFSET}" \
+  "next ${SLV_NEXT}" \
+  $SLV_EXIT \
+  | stdbuf -o0 jq -r "${SLV_FORMAT}" \
+  | _cat

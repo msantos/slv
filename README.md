@@ -32,7 +32,9 @@ else. There is also a command line interface.
 
 * [websocketd](http://websocketd.com/)
 
-* cli usage: [wsta](https://github.com/esphen/wsta)
+* slvgrep: basic cli client
+    * [wsta](https://github.com/esphen/wsta)
+    * jq
 
 ### Configuration
 
