@@ -45,7 +45,7 @@ slvgrep [<option>] /<service> [<pattern>]
   -n <count>        number of lines to return (default: $SLV_NEXT)
   -O <offset>       move to file offset (default: $SLV_OFFSET)
   -r <format>       JSON log format (default: $SLV_FORMAT)
-  -S <address:port> archive server address (default: $SLV_SERVER)
+  -S <address:port> slv server address (default: $SLV_SERVER)
   -v                enable verbose mode
 
 EOF
@@ -97,7 +97,7 @@ if [ -t 1 ] && [ $SLV_EOF -eq "0" ]; then
   SLV_EXIT=""
 fi
 
-wsta ${SLV_VERBOSE} "ws://${SLV_SERVER}/archive/" \
+wsta ${SLV_VERBOSE} "ws://${SLV_SERVER}/slv/" \
   "service ${SLV_SERVICE}" \
   "open ${SLV_OPEN}" \
   "dir ${SLV_MODE}" \
