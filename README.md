@@ -51,7 +51,7 @@ BASEDIR="${BASEDIR-.}"
 export PATH=$PATH:$BASEDIR/bin
 
 exec websocketd \
-    --loglevel="$SLV_LOGLEVEL" \
+    --loglevel="${SLV_LOGLEVEL-debug}" \
     --passenv=SLV_LOGDIR \
     --passenv=SLV_FILE \
     --passenv=SLV_SERVICE \
