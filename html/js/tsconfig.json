@@ -1,6 +1,8 @@
 {
   "compilerOptions": {
-    "alwaysStrict": true
+    "alwaysStrict": true,
+    "strict": true,
+    "target": "ES6"
   },
   "files": [
     "slv.ts"

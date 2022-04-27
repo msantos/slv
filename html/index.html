@@ -55,7 +55,7 @@
         </form>
         <form onsubmit="return false;">
           <div>
-            <input type="text" id="context" value="0" onkeyup='dirty("context", {"type": "non_neg_integer"});'>
+            <input type="text" id="context" value="0" onkeyup='changed("context", {"type": "non_neg_integer"});'>
             <label for="context">match context: number of lines to display before match</label>
           </div>
         </form>
@@ -64,16 +64,16 @@
       <div id="config_advanced" class="tabcontent">
         <form>
           <div>
-          <input type="radio" name="count" id="count_true" value="true" onclick='dirty("lineno", {"bool": true})' >
+          <input type="radio" name="count" id="count_true" value="true" onclick='changed("lineno", {"bool": true})' >
           <label for="count_true">enable line numbers</label>
 
-          <input type="radio" name="count" id="count_false" value="false" onclick='dirty("lineno", {"bool": false})' checked>
+          <input type="radio" name="count" id="count_false" value="false" onclick='changed("lineno", {"bool": false})' checked>
           <label for="count_false">disable line numbers</label>
           </div>
         </form>
         <form onsubmit="return false;">
           <div>
-            <input type="text" id="offset" value="0" onkeyup='dirty("offset", {"type": "non_neg_integer"});'>
+            <input type="text" id="offset" value="0" onkeyup='changed("offset", {"type": "non_neg_integer"});'>
             <label for="offset">offset: move to line in file</label>
           </div>
         </form>

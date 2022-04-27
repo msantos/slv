@@ -302,7 +302,7 @@ function lines() {
   return Math.floor(window.innerHeight / (50 * state.scale));
 }
 
-function dirty(setting: string, opt: any) {
+function changed(setting: string, opt: any) {
   var t = (!opt || opt.type == undefined) ? "any" : opt.type;
 
   switch (t) {

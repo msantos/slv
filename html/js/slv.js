@@ -1,6 +1,4 @@
-"use strict";
-exports.__esModule = true;
-require("ws");
+import "ws";
 var ws;
 var state = {
     "today": -1,
@@ -13,7 +11,7 @@ var state = {
     "re": false,
     "context": false,
     "offset": false,
-    "lineno": false
+    "lineno": false,
 };
 var config = {
     "service": function () {
@@ -33,15 +31,15 @@ var config = {
     },
     "offset": function () {
         return document.getElementById("offset").value;
-    }
+    },
 };
 function filename(name, d) {
     // @ts-ignore
     return state.file + moment(d).format(".YYYY-MM-DD");
 }
 function next_archive() {
-    var archive = document.getElementsByName("archive");
-    var checked = 0;
+    let archive = document.getElementsByName("archive");
+    let checked = 0;
     for (var i = 0; i < archive.length; i++) {
         if (archive[i].checked) {
             checked = i;
@@ -61,7 +59,7 @@ function tomorrow() {
     state.today -= 1;
     switch (state.today) {
         case -2:
-            var archive = next_archive();
+            let archive = next_archive();
             document.getElementById(archive).checked = true;
             state.today = -1;
             state.curfile = state.file;
@@ -95,7 +93,7 @@ function open(name) {
     ]);
 }
 function stderr(msg) {
-    var message = document.getElementById("message");
+    let message = document.getElementById("message");
     message.textContent = msg;
 }
 function localtime(d) {
@@ -151,15 +149,13 @@ function xsend(arg) {
     console.log(arg);
     switch (ws.readyState) {
         case ws.OPEN:
-            arg.forEach(function (_a) {
-                var arg0 = _a[0], arg1 = _a[1];
+            arg.forEach(function ([arg0, arg1]) {
                 send(arg0, arg1);
             });
             break;
         case ws.CLOSED:
             connect(function () {
-                arg.forEach(function (_a) {
-                    var arg0 = _a[0], arg1 = _a[1];
+                arg.forEach(function ([arg0, arg1]) {
                     send(arg0, arg1);
                 });
             });
@@ -225,7 +221,7 @@ function service(s) {
 function lines() {
     return Math.floor(window.innerHeight / (50 * state.scale));
 }
-function dirty(setting, opt) {
+function changed(setting, opt) {
     var t = (!opt || opt.type == undefined) ? "any" : opt.type;
     switch (t) {
         case "any":
@@ -313,7 +309,7 @@ function loguri() {
     var uri = protocol + "//" + hostname + ":" + port + "/log/" +
         config.service() + "/" + state.curfile;
     console.log(uri);
-    var e = document.getElementById('download');
+    let e = document.getElementById('download');
     e.action = uri;
     e.method = "get";
 }
@@ -336,7 +332,7 @@ function set_from_query_string(query) {
         return;
     var p = query.split('&');
     p.forEach(function (s) {
-        var _a = s.split('=', 2), k = _a[0], v = _a[1];
+        var [k, v] = s.split('=', 2);
         switch (k) {
             case "service":
             case "dir":
