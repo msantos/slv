@@ -78,7 +78,7 @@ var config = {
 
 function filename(name: string, d: Date) {
   // @ts-ignore
-  return state.file + moment(d).format(".YYYY-MM-DD");
+  return state.file + dayjs(d).format(".YYYY-MM-DD");
 }
 
 function next_archive() {
@@ -100,7 +100,7 @@ function yesterday() {
   state.curfile = filename(
     state.file,
     // @ts-ignore
-    moment().subtract(state.today, "days")
+    dayjs().subtract(state.today, "days")
   );
   return state.curfile;
 }
@@ -124,7 +124,7 @@ function tomorrow() {
       state.curfile = filename(
         state.file,
         // @ts-ignore
-        moment().subtract(state.today, "days")
+        dayjs().subtract(state.today, "days")
       );
       break;
   }
@@ -160,7 +160,7 @@ function localtime(d: Date) {
   switch (state.localtime) {
     case true:
       // @ts-ignore
-      return moment(d).format();
+      return dayjs(d).format();
     case false:
       return d;
   }
