@@ -1,4 +1,4 @@
-import "ws";
+//import "ws";
 var ws;
 var state = {
     "today": -1,

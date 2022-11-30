@@ -175,6 +175,10 @@ while read -u 9 -r l; do
       esac
     done
   fi
+  if [ "$X" -eq "-1" ]; then
+    exec 0<&9
+    exec grep "$SLV_RE"
+  fi
   SLV_LINE=$((SLV_LINE+1))
   if [[ ! $l =~ $SLV_RE ]]; then
     if [ "$SLV_CONTEXT" -gt "0" ]; then
